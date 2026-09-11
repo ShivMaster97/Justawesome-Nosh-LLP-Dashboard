@@ -580,7 +580,7 @@ function computeGrossBilling(agg){
 function aggregate(rows){
   if (!rows.length){
     return { months: [], Rev:{}, GrossRev:0, Ded:{}, NetDed:0, NetRev:0, Exp:{}, TotalExp:0, EBITDA:0,
-      AdditionalSC:0, Below:{}, NetEarnings:0, RevSplit:{}, GrossBilling:0 };
+      AdditionalSC:0, Below:{}, NetEarnings:0, RevSplit:{}, GrossBilling:0, GrossRevWithSC:0, NetRevWithSC:0 };
   }
   var agg = {
     months: rows.map(function(r){ return r.MonthLabel; }),
@@ -592,6 +592,12 @@ function aggregate(rows){
     RevSplit: sumFlat(rows, 'RevSplit')
   };
   agg.GrossBilling = computeGrossBilling(agg);
+  // Gross/Net Revenue as shown on the Overview KPI cards fold in Additional SC (real revenue that
+  // otherwise only shows up as post-EBITDA "other income") -- kept as separate fields so the P&L
+  // Breakdown table, Revenue Mix tab, and % basis engine stay tied to the source workbook's own
+  // Total Gross Revenue / Total Net Revenue rows exactly as they are.
+  agg.GrossRevWithSC = agg.GrossRev + agg.AdditionalSC;
+  agg.NetRevWithSC = agg.NetRev + agg.AdditionalSC;
   return agg;
 }
 function currentRows(){ return rowsForView(state.brand, state.location); }
@@ -786,13 +792,13 @@ function renderKPIs(){
   var agg = currentAgg();
   var prev = prevAgg();
   var grid = document.getElementById('kpiGrid');
-  var ebitdaMargin = pctVal(agg.EBITDA, agg.NetRev);
+  var ebitdaMargin = pctVal(agg.EBITDA, agg.NetRevWithSC);
   var period = state.period, key = currentPeriodKey();
   var cards = [
-    { lbl:'Gross Billing (incl. Taxes)', field:'GrossBilling', val: money(agg.GrossBilling, {compact:true}), sub2:'Taxes collected: '+money(agg.GrossBilling-agg.GrossRev, {compact:true}), curr: agg.GrossBilling, prev: prev?prev.GrossBilling:null, up:true },
-    { lbl:'Gross Revenue (Net of Taxes)', field:'GrossRev', val: money(agg.GrossRev, {compact:true}), curr: agg.GrossRev, prev: prev?prev.GrossRev:null, up:true },
-    { lbl:'Net Revenue', field:'NetRev', val: money(agg.NetRev, {compact:true}), curr: agg.NetRev, prev: prev?prev.NetRev:null, up:true },
-    { lbl:'Total Expenditure', field:'TotalExp', val: money(agg.TotalExp, {compact:true}), sub2:(agg.NetRev?(100*agg.TotalExp/agg.NetRev).toFixed(1):'0.0')+'% of net revenue', curr: agg.TotalExp, prev: prev?prev.TotalExp:null, up:false },
+    { lbl:'Gross Billing (incl. Taxes)', field:'GrossBilling', val: money(agg.GrossBilling, {compact:true}), sub2:'Taxes collected: '+money(agg.GrossBilling-agg.GrossRevWithSC, {compact:true}), curr: agg.GrossBilling, prev: prev?prev.GrossBilling:null, up:true },
+    { lbl:'Gross Revenue (Net of Taxes)', field:'GrossRevWithSC', val: money(agg.GrossRevWithSC, {compact:true}), curr: agg.GrossRevWithSC, prev: prev?prev.GrossRevWithSC:null, up:true },
+    { lbl:'Net Revenue', field:'NetRevWithSC', val: money(agg.NetRevWithSC, {compact:true}), curr: agg.NetRevWithSC, prev: prev?prev.NetRevWithSC:null, up:true },
+    { lbl:'Total Expenditure', field:'TotalExp', val: money(agg.TotalExp, {compact:true}), sub2:(agg.NetRevWithSC?(100*agg.TotalExp/agg.NetRevWithSC).toFixed(1):'0.0')+'% of net revenue', curr: agg.TotalExp, prev: prev?prev.TotalExp:null, up:false },
     { lbl:'EBITDA', field:'EBITDA', val: money(agg.EBITDA, {compact:true}), sub2: ebitdaMargin.toFixed(1) + '% margin', curr: agg.EBITDA, prev: prev?prev.EBITDA:null, up:true },
   ];
   grid.innerHTML = cards.map(function(c){
