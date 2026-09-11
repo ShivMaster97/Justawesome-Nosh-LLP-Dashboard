@@ -213,7 +213,7 @@ table.pnltable thead th.hlcol{background:#F6E8CE !important;color:var(--navy);}
         <button class="switch active" id="priorPeriodsToggle" role="switch" aria-checked="true"><span class="knob"></span></button>
         <span class="priortogglelabel">Prior Periods</span>
       </div>
-      <div class="kpirow" id="kpiGrid"></div>
+      <div class="kpirow cols5" id="kpiGrid"></div>
       <div class="sectionlabel">Key Cost Lines — <span id="costKpiPeriodLabel"></span></div>
       <div class="kpirow" id="costKpiGrid" style="grid-template-columns:repeat(8,1fr);"></div>
       <div class="grid2">
@@ -566,12 +566,23 @@ function sumFlat(rows, field){
   return out;
 }
 
+// Gross Billing (incl. taxes), same methodology as the Sortd dashboard: reconstructs the tax-inclusive
+// billed amount from the archived Revenue Split channels + Additional SC (from the main P&L, not
+// Revenue Split). Dine In/Takeaway/Service Charge/Additional SC carry 5% tax, Scoop-dawg carries 18%,
+// Delivery and Mex Bowl are added as-is (no tax).
+function computeGrossBilling(agg){
+  var rs = agg.RevSplit || {};
+  var fivePctBase = (rs.DineIn||0) + (rs.Takeaway||0) + (rs.ServiceCharge||0) + (agg.AdditionalSC||0);
+  var scoopBase = rs.ScoopDawg||0;
+  return fivePctBase * 1.05 + scoopBase * 1.18 + (rs.Delivery||0) + (rs.MexBowl||0);
+}
+
 function aggregate(rows){
   if (!rows.length){
     return { months: [], Rev:{}, GrossRev:0, Ded:{}, NetDed:0, NetRev:0, Exp:{}, TotalExp:0, EBITDA:0,
-      AdditionalSC:0, Below:{}, NetEarnings:0, RevSplit:{} };
+      AdditionalSC:0, Below:{}, NetEarnings:0, RevSplit:{}, GrossBilling:0 };
   }
-  return {
+  var agg = {
     months: rows.map(function(r){ return r.MonthLabel; }),
     Rev: sumDictField(rows, 'Rev'), GrossRev: sumNum(rows, 'GrossRev'),
     Ded: sumDictField(rows, 'Ded'), NetDed: sumNum(rows, 'NetDed'), NetRev: sumNum(rows, 'NetRev'),
@@ -580,6 +591,8 @@ function aggregate(rows){
     Below: sumDictField(rows, 'Below'), NetEarnings: sumNum(rows, 'NetEarnings'),
     RevSplit: sumFlat(rows, 'RevSplit')
   };
+  agg.GrossBilling = computeGrossBilling(agg);
+  return agg;
 }
 function currentRows(){ return rowsForView(state.brand, state.location); }
 function currentMonthMap(){ return monthMapForView(state.brand, state.location); }
@@ -776,7 +789,8 @@ function renderKPIs(){
   var ebitdaMargin = pctVal(agg.EBITDA, agg.NetRev);
   var period = state.period, key = currentPeriodKey();
   var cards = [
-    { lbl:'Gross Revenue', field:'GrossRev', val: money(agg.GrossRev, {compact:true}), curr: agg.GrossRev, prev: prev?prev.GrossRev:null, up:true },
+    { lbl:'Gross Billing (incl. Taxes)', field:'GrossBilling', val: money(agg.GrossBilling, {compact:true}), sub2:'Taxes collected: '+money(agg.GrossBilling-agg.GrossRev, {compact:true}), curr: agg.GrossBilling, prev: prev?prev.GrossBilling:null, up:true },
+    { lbl:'Gross Revenue (Net of Taxes)', field:'GrossRev', val: money(agg.GrossRev, {compact:true}), curr: agg.GrossRev, prev: prev?prev.GrossRev:null, up:true },
     { lbl:'Net Revenue', field:'NetRev', val: money(agg.NetRev, {compact:true}), curr: agg.NetRev, prev: prev?prev.NetRev:null, up:true },
     { lbl:'Total Expenditure', field:'TotalExp', val: money(agg.TotalExp, {compact:true}), sub2:(agg.NetRev?(100*agg.TotalExp/agg.NetRev).toFixed(1):'0.0')+'% of net revenue', curr: agg.TotalExp, prev: prev?prev.TotalExp:null, up:false },
     { lbl:'EBITDA', field:'EBITDA', val: money(agg.EBITDA, {compact:true}), sub2: ebitdaMargin.toFixed(1) + '% margin', curr: agg.EBITDA, prev: prev?prev.EBITDA:null, up:true },
